@@ -155,7 +155,7 @@ int main()
     printf("\n*********************************** The read operations ********************************\n");
     gettimeofday(&start_time, NULL);
     //ProfilerStart("utree_search");
-    for (int i = 0; i < OP_NUM; i = (i + 1) % OP_NUM) {
+    for (int i = 0; i < OP_NUM; i = i + 1) {
       ret = bt->search(keys[i]);
       if (ret == NULL){
         printf("fail to get keys[%d]=%lu\n", i, keys[i]);
