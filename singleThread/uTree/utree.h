@@ -979,7 +979,7 @@ int file_exists(const char *filename) {
 
 void openPmemobjPool() {
   printf("use pmdk!\n");
-  char pathname[100] = "/home/fkd/CPTree-202006/mount/pool";
+  char pathname[100] = "mount/pmem0/pool";
   int sds_write_value = 0;
   pmemobj_ctl_set(NULL, "sds.at_create", &sds_write_value);
   if (file_exists(pathname) != 0) {

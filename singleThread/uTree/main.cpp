@@ -10,6 +10,7 @@
 #include "utree.h"
 #include <gperftools/profiler.h>
 #include <unistd.h>
+#include <errno.h>
 using namespace std;
 typedef uint64_t setkey_t;
 typedef void *setval_t;
@@ -114,6 +115,9 @@ int main()
     int fd = open("/dev/dax0.0", O_RDWR);
     void *pmem = mmap(NULL, (uint64_t)600ULL * 1024ULL * 1024ULL * 1024ULL,
                       PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (pmem == (void *)-1) {
+        printf("errno = %p", errno);
+    }
     start_addr = (char *)pmem;
     curr_addr = start_addr;
     printf("start_addr=%p, end_addr=%p\n", start_addr,
@@ -154,7 +158,7 @@ int main()
     for (int i = 0; i < OP_NUM; i = (i + 1) % OP_NUM) {
       ret = bt->search(keys[i]);
       if (ret == NULL){
-        printf("fail to get keys[%d]=%lu", i, keys[i]);
+        printf("fail to get keys[%d]=%lu\n", i, keys[i]);
       }
     }
     //ProfilerStop();
