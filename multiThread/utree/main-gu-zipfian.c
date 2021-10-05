@@ -10,6 +10,8 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 
+#include "experiment.hpp"
+
 extern "C"
 {
     #include <atomic_ops.h>
@@ -169,7 +171,7 @@ typedef struct thread_data {
     unsigned long nb_aborts_double_write;
     unsigned long max_retries;
     unsigned int  seed;
-    btree         *set;
+    btree<int64_t>         *set;
     barrier_t     *barrier;
     unsigned long failures_because_contention;
     char * start_addr;
@@ -211,7 +213,7 @@ void *test(void *data)
                     clock_gettime(CLOCK_MONOTONIC, &T1);
                 }
 #endif
-                d->set->insert(val, (char*) val);
+                d->set->insert(val, val);
                 
 #ifdef DETECT_LATENCY
                 if (d->id == 1){
@@ -482,10 +484,12 @@ int main(int argc, char **argv)
 
     levelmax = floor_log_2((unsigned int) initial);
 
+    experiment();
+
     /* create the skip list set and do inits */
     global_id = nb_threads * update / 100;
-    btree *bt;
-    bt = new btree();
+    btree<int64_t> *bt;
+    bt = new btree<int64_t>();
     
     stop = 0;
 
@@ -509,7 +513,7 @@ int main(int argc, char **argv)
     gettimeofday(&start_time, NULL);
 
     while (i < initial) {
-        bt->insert(i, (char*) i);
+        bt->insert(i, i);
         last = val;
         i++;
     }

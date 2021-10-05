@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cassert>
 #include <climits>
 #include <fstream>
@@ -16,13 +18,14 @@
 #include <time.h>
 #include <unistd.h>
 #include <vector>
-#include <gperftools/profiler.h>
+// #include <gperftools/profiler.h>
 
 #define PAGESIZE 512
 #define CACHE_LINE_SIZE 64 
 #define IS_FORWARD(c) (c % 2 == 0)
 
 using entry_key_t = int64_t;
+
 
 pthread_mutex_t print_mtx;
 
@@ -48,8 +51,9 @@ inline void clflush(char *data, int len)
   mfence();
 }
 
+template <typename T = int64_t>
 struct list_node_t {
-  uint64_t ptr;  
+  T value;  
   entry_key_t key;
   bool isUpdate;
   bool isDelete;
@@ -57,9 +61,10 @@ struct list_node_t {
   void printAll(void);
 };
 
-void list_node_t::printAll(void) { 
+template <typename T>
+void list_node_t<T>::printAll(void) { 
   printf("addr=%p, key=%d, ptr=%u, isUpdate=%d, isDelete=%d, next=%p\n", 
-          this, this->key, this->ptr, this->isUpdate, this->isDelete, this->next); 
+          this, this->key, this->value, this->isUpdate, this->isDelete, this->next); 
 }
 #ifdef USE_PMDK
 POBJ_LAYOUT_BEGIN(btree);
@@ -67,6 +72,7 @@ POBJ_LAYOUT_TOID(btree, list_node_t);
 POBJ_LAYOUT_END(btree);
 PMEMobjpool *pop;
 #endif
+template <typename T>
 void *alloc(size_t size) {
 #ifdef USE_PMDK
   TOID(list_node_t) p;
@@ -74,7 +80,7 @@ void *alloc(size_t size) {
   return pmemobj_direct(p.oid);
 #else
   void *ret = curr_addr;
-  memset(ret, 0, sizeof(list_node_t));
+  memset(ret, 0, sizeof(list_node_t<T>));
   curr_addr += size;
   if (curr_addr >= start_addr + SPACE_PER_THREAD) {
     printf("start_addr is %p, curr_addr is %p, SPACE_PER_THREAD is %lu, no "
@@ -86,15 +92,17 @@ void *alloc(size_t size) {
 #endif
 }
 
+template <typename T>
 class page;
 
+template <typename T>
 class btree{
   private:
     int height;
     char* root;
 
   public:
-    list_node_t *list_head = NULL;
+    list_node_t<T> *list_head = NULL;
     btree();
     ~btree();
     void setNewRoot(char *);
@@ -103,16 +111,16 @@ class btree{
     void btree_insert_internal(char *, entry_key_t, char *, uint32_t);
     void btree_delete(entry_key_t);
     char *btree_search(entry_key_t);
-    char *btree_search_pred(entry_key_t, bool *f, char**, bool);
+    char *btree_search_pred(entry_key_t, bool *f, char**, bool debug = false);
     void printAll();
-    void insert(entry_key_t, char*); // Insert
+    T* insert(entry_key_t, T);       // Insert
     void remove(entry_key_t);        // Remove
-    char* search(entry_key_t);       // Search
+    T* search(entry_key_t);          // Search
 
     void print()
     {
       int i = 0;
-      list_node_t *tmp = list_head;
+      list_node_t<T> *tmp = list_head;
       while (tmp->next != NULL) {
         //printf("%d-%d\t", tmp->next->key, tmp->next->ptr);
         tmp = tmp->next;
@@ -122,23 +130,24 @@ class btree{
       }
       printf("\n");
     }
-    friend class page;
+    friend class page<T>;
 };
 
 
+template <typename T>
 class header{
   private:
-    page* leftmost_ptr;         // 8 bytes
-    page* sibling_ptr;          // 8 bytes
-    page* pred_ptr;             // 8 bytes
+    page<T>* leftmost_ptr;      // 8 bytes
+    page<T>* sibling_ptr;       // 8 bytes
+    page<T>* pred_ptr;          // 8 bytes
     uint32_t level;             // 4 bytes
     uint8_t switch_counter;     // 1 bytes
     uint8_t is_deleted;         // 1 bytes
     int16_t last_index;         // 2 bytes
     std::mutex *mtx;            // 8 bytes
 
-    friend class page;
-    friend class btree;
+    friend class page<T>;
+    friend class btree<T>;
 
   public:
     header() {
@@ -157,6 +166,7 @@ class header{
     }
 };
 
+template <typename T>
 class entry{ 
   private:
     entry_key_t key; // 8 bytes
@@ -168,20 +178,22 @@ class entry{
       ptr = NULL;
     }
 
-    friend class page;
-    friend class btree;
+    friend class page<T>;
+    friend class btree<T>;
 };
 
-const int cardinality = (PAGESIZE-sizeof(header))/sizeof(entry);
-const int count_in_line = CACHE_LINE_SIZE / sizeof(entry);
 
+template <typename T>
 class page{
+
+  const static int cardinality = (PAGESIZE-sizeof(header<T>))/sizeof(entry<T>);
+  const static int count_in_line = CACHE_LINE_SIZE / sizeof(entry<T>);
   private:
-    header hdr;  // header in persistent memory, 16 bytes
-    entry records[cardinality]; // slots in persistent memory, 16 bytes * n
+    header<T> hdr;  // header in persistent memory, 16 bytes
+    entry<T> records[cardinality]; // slots in persistent memory, 16 bytes * n
 
   public:
-    friend class btree;
+    friend class btree<T>;
 
     page(uint32_t level = 0) {
       hdr.level = level;
@@ -257,7 +269,7 @@ class page{
       return shift;
     }
 
-    bool remove(btree* bt, entry_key_t key, bool only_rebalance = false, bool with_lock = true) {
+    bool remove(btree<T>* bt, entry_key_t key, bool only_rebalance = false, bool with_lock = true) {
       hdr.mtx->lock();
 
       bool ret = remove_key(key);
@@ -276,8 +288,8 @@ class page{
 
           // FAST
           if(*num_entries == 0) {  // this page is empty
-            entry* new_entry = (entry*) &records[0];
-            entry* array_end = (entry*) &records[1];
+            entry<T>* new_entry = (entry<T>*) &records[0];
+            entry<T>* array_end = (entry<T>*) &records[1];
             new_entry->key = (entry_key_t) key;
             new_entry->ptr = (char*) ptr;
 
@@ -317,7 +329,7 @@ class page{
       }
 
     // Insert a new key - FAST and FAIR
-    page *store(btree* bt, char* left, entry_key_t key, char* right,
+    page *store(btree<T>* bt, char* left, entry_key_t key, char* right,
        bool flush, bool with_lock, page *invalid_sibling = NULL) {
         if(with_lock) {
           hdr.mtx->lock(); // Lock the write lock
@@ -442,8 +454,8 @@ class page{
 
         // FAST
         if(*num_entries == 0) {  // this page is empty
-          entry* new_entry = (entry*) &records[0];
-          entry* array_end = (entry*) &records[1];
+          entry<T>* new_entry = (entry<T>*) &records[0];
+          entry<T>* array_end = (entry<T>*) &records[1];
           new_entry->key = (entry_key_t) key;
           new_entry->ptr = (char*) ptr;
 
@@ -491,7 +503,7 @@ class page{
     /********
      * if key exists, return NULL
      */
-    page *store(btree* bt, char* left, entry_key_t key, char* right,
+    page *store(btree<T>* bt, char* left, entry_key_t key, char* right,
        bool flush, bool with_lock, char **pred, page *invalid_sibling = NULL) {
         if(with_lock) {
           hdr.mtx->lock(); // Lock the write lock
@@ -1002,39 +1014,43 @@ void openPmemobjPool() {
 /*
  * class btree
  */
-btree::btree(){
+template<typename T>
+btree<T>::btree(){
 #ifdef USE_PMDK
   openPmemobjPool();
 #else
   printf("without pmdk!\n");
 #endif
-  root = (char*)new page();
-  list_head = (list_node_t *)alloc(sizeof(list_node_t));
+  root = (char*)new page<T>();
+  list_head = (list_node_t<T> *)alloc<T>(sizeof(list_node_t<T>));
   printf("list_head=%p\n", list_head);
   list_head->next = NULL;
   height = 1;
 }
 
-btree::~btree() { 
+template<typename T>
+btree<T>::~btree() { 
 #ifdef USE_PMDK
   pmemobj_close(pop); 
 #endif
 }
 
-void btree::setNewRoot(char *new_root) {
+template<typename T>
+void btree<T>::setNewRoot(char *new_root) {
   this->root = (char*)new_root;
   ++height;
 }
 
-char *btree::btree_search_pred(entry_key_t key, bool *f, char **prev, bool debug=false){
-  page* p = (page*)root;
+template<typename T>
+char *btree<T>::btree_search_pred(entry_key_t key, bool *f, char **prev, bool debug){
+  page<T>* p = (page<T>*)root;
 
   while(p->hdr.leftmost_ptr != NULL) {
-    p = (page *)p->linear_search(key);
+    p = (page<T> *)p->linear_search(key);
   }
   
-  page *t;
-  while((t = (page *)p->linear_search_pred(key, prev, debug)) == p->hdr.sibling_ptr) {
+  page<T>*t;
+  while((t = (page<T> *)p->linear_search_pred(key, prev, debug)) == p->hdr.sibling_ptr) {
     p = t;
     if(!p) {
       break;
@@ -1052,14 +1068,16 @@ char *btree::btree_search_pred(entry_key_t key, bool *f, char **prev, bool debug
 }
 
 
-char *btree::search(entry_key_t key) {
+template<typename T>
+T *btree<T>::search(entry_key_t key) {
   bool f = false;
   char *prev;
   char *ptr = btree_search_pred(key, &f, &prev);
   if (f) {
-    list_node_t *n = (list_node_t *)ptr;
-    if (n->ptr != 0)
-      return (char *)n->ptr; 
+    list_node_t<T> *n = (list_node_t<T> *)ptr;
+    if (&(n->value) != nullptr) {
+      return &(n->value); 
+    }
   } else {
     ;//printf("not found.\n");
   }
@@ -1067,11 +1085,12 @@ char *btree::search(entry_key_t key) {
 }
 
 // insert the key in the leaf node
-void btree::btree_insert_pred(entry_key_t key, char* right, char **pred, bool *update){ //need to be string
-  page* p = (page*)root;
+template<typename T>
+void btree<T>::btree_insert_pred(entry_key_t key, char* right, char **pred, bool *update){ //need to be string
+  page<T>* p = (page<T>*)root;
 
   while(p->hdr.leftmost_ptr != NULL) { 
-    p = (page*)p->linear_search(key);
+    p = (page<T>*)p->linear_search(key);
   }
   *pred = NULL;
   if(!p->store(this, NULL, key, right, true, true, pred)) { // store 
@@ -1083,37 +1102,38 @@ void btree::btree_insert_pred(entry_key_t key, char* right, char **pred, bool *u
   }
 }
 
-void btree::insert(entry_key_t key, char *right) {
-  list_node_t *n = (list_node_t *)alloc(sizeof(list_node_t));
+template<typename T>
+T* btree<T>::insert(entry_key_t key, T value) {
+  list_node_t<T> *n = (list_node_t<T> *)alloc<T>(sizeof(list_node_t<T>));
   //printf("n=%p\n", n);
   n->next = NULL;
   n->key = key;
-  n->ptr = (uint64_t)right;
+  n->value = value;
   n->isUpdate = false;
   n->isDelete = false;
-  list_node_t *prev = NULL;
+  list_node_t<T> *prev = NULL;
   bool update;
   bool rt = false;
   btree_insert_pred(key, (char *)n, (char **)&prev, &update); 
   if (update && prev != NULL) { 
     // Overwrite.
-    prev->ptr = (uint64_t)right; 
+    prev->value = value; 
     //flush.
-    clflush((char *)prev, sizeof(list_node_t));
+    clflush((char *)prev, sizeof(list_node_t<T>));
   }
   else { 
     int retry_number = 0, w=0;
 retry:
   retry_number += 1;
   if (retry_number > 10 && w == 3) {
-    return;
+    return nullptr;
     }
     if (rt) {
       // we need to re-search the key!
       bool f;
       btree_search_pred(key, &f, (char **)&prev);
       if (!f) {
-        return ;
+        return nullptr;
         printf("error!!!!\n");
         exit(0);
       }
@@ -1132,16 +1152,16 @@ retry:
       }
         
       // check the order and CAS.
-      list_node_t *next = prev->next;
+      list_node_t<T> *next = prev->next;
       n->next = next;
-      clflush((char *)n, sizeof(list_node_t));
+      clflush((char *)n, sizeof(list_node_t<T>));
       if (prev->key < key && (next == NULL || next->key > key)) {
         if (!__sync_bool_compare_and_swap(&(prev->next), next, n)){
           w = 2;
           goto retry;
         }
           
-        clflush((char *)prev, sizeof(list_node_t));
+        clflush((char *)prev, sizeof(list_node_t<T>));
       } else {
         // View changed, retry.
         w = 3;
@@ -1153,14 +1173,16 @@ retry:
         goto retry;
     }
   }
+  return &(n->value);
 }
 
 
-void btree::remove(entry_key_t key) {
+template<typename T>
+void btree<T>::remove(entry_key_t key) {
   bool f, debug=false;
-  list_node_t *cur = NULL, *prev = NULL;
+  list_node_t<T> *cur = NULL, *prev = NULL;
 retry:
-  cur = (list_node_t *)btree_search_pred(key, &f, (char **)&prev, debug);
+  cur = (list_node_t<T> *)btree_search_pred(key, &f, (char **)&prev, debug);
   if (!f) {
     printf("not found.\n");
     return;
@@ -1181,36 +1203,38 @@ retry:
     // Delete it.
     if (!__sync_bool_compare_and_swap(&(prev->next), cur, cur->next))
       goto retry;
-    clflush((char *)prev, sizeof(list_node_t));
+    clflush((char *)prev, sizeof(list_node_t<T>));
     btree_delete(key);
   }
   
 }
 
 // store the key into the node at the given level 
-void btree::btree_insert_internal(char *left, entry_key_t key, char *right, uint32_t level) {
-  if(level > ((page *)root)->hdr.level)
+template<typename T>
+void btree<T>::btree_insert_internal(char *left, entry_key_t key, char *right, uint32_t level) {
+  if(level > ((page<T> *)root)->hdr.level)
     return;
 
-  page *p = (page *)this->root;
+  page<T> *p = (page<T> *)this->root;
 
   while(p->hdr.level > level) 
-    p = (page *)p->linear_search(key);
+    p = (page<T> *)p->linear_search(key);
 
   if(!p->store(this, NULL, key, right, true, true)) {
     btree_insert_internal(left, key, right, level);
   }
 }
 
-void btree::btree_delete(entry_key_t key) {
-  page* p = (page*)root;
+template<typename T>
+void btree<T>::btree_delete(entry_key_t key) {
+  page<T>* p = (page<T>*)root;
 
   while(p->hdr.leftmost_ptr != NULL){
-    p = (page*) p->linear_search(key);
+    p = (page<T>*) p->linear_search(key);
   }
 
-  page *t;
-  while((t = (page *)p->linear_search(key)) == p->hdr.sibling_ptr) {
+  page<T> *t;
+  while((t = (page<T> *)p->linear_search(key)) == p->hdr.sibling_ptr) {
     p = t;
     if(!p)
       break;
@@ -1226,13 +1250,14 @@ void btree::btree_delete(entry_key_t key) {
   }
 }
 
-void btree::printAll(){
+template<typename T>
+void btree<T>::printAll(){
   pthread_mutex_lock(&print_mtx);
   int total_keys = 0;
-  page *leftmost = (page *)root;
+  page<T> *leftmost = (page<T> *)root;
   printf("root: %x\n", root);
   do {
-    page *sibling = leftmost;
+    page<T> *sibling = leftmost;
     while(sibling) {
       if(sibling->hdr.level == 0) {
         total_keys += sibling->hdr.last_index + 1;
