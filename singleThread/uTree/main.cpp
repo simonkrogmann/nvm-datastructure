@@ -15,7 +15,7 @@ using namespace std;
 typedef uint64_t setkey_t;
 typedef void *setval_t;
 
-#define OP_NUM 10000000
+#define OP_NUM 100000
 setkey_t keys[OP_NUM];
 
 struct timeval start_time, end_time;
@@ -135,6 +135,7 @@ int main()
         keys[swap_pos] = temp;
     }
 #endif
+    // bt->insert(keys[i], (char *)i);
     printf("\n*********************************** The insert operations ********************************\n");
     gettimeofday(&start_time, NULL);
     //ProfilerStart("utree_insert");
@@ -160,6 +161,8 @@ int main()
       if (ret == NULL){
         printf("fail to get keys[%d]=%lu\n", i, keys[i]);
       }
+
+      // printf("got %d %lu, %llu\n", i, keys[i], (unsigned long long) ret);
     }
     //ProfilerStop();
     gettimeofday(&end_time, NULL);
@@ -183,7 +186,7 @@ int main()
     printf("\n*********************************** The delete operations ********************************\n");
     gettimeofday(&start_time, NULL);
     //ProfilerStart("utree_delete");
-    for (i = 0; i < 100000; i++) {
+    for (i = 0; i < OP_NUM /10; i++) {
         print_statics_delete(i);
         //printf("remove keys[%d]=%d\n", i, keys[i]);
         bt->remove(keys[i*2]);

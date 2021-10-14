@@ -360,8 +360,23 @@ int main(int argc, char **argv)
     bindCPU();
     fd[0] = open("/dev/dax0.0", O_RDWR);
     fd[1] = open("/dev/dax1.0", O_RDWR);
+    if (fd[0] == -1)
+    {
+        perror("open0");
+        exit(1);
+    }
+    if (fd[1] == -1)
+    {
+        perror("open1");
+        exit(1);
+    }
     for (int i=0; i<2; i++){
       pmem[i] = mmap(NULL, allocate_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd[i], 0);
+      if (pmem[i] == (void*) -1)
+      {
+        perror("mmap");
+        exit(1);
+      }
       thread_space_start_addr[i] = (char *)pmem[i] + SPACE_OF_MAIN_THREAD;
     }
     start_addr = (char *)pmem[0];
@@ -559,6 +574,10 @@ int main(int argc, char **argv)
       data[i].failures_because_contention = 0;
       data[i].start_addr = thread_space_start_addr[nodeID] + (i / 2) * SPACE_PER_THREAD;
       data[i].affinityNodeID = nodeID;
+      if (reinterpret_cast<size_t>(data[i].start_addr) % 4 != 0)
+      {
+          std::cerr << "Unaligned thread start at " << reinterpret_cast<size_t>(curr_addr) << " in thread " << i << std::endl;
+      }
       if (pthread_create(&threads[i], &attr, test, (void *)(&data[i])) != 0) {
         fprintf(stderr, "Error creating thread\n");
         exit(1);

@@ -12,3 +12,4 @@ sleep 3
 done
 done
 
+# gdb main-gu-zipfian -- -t 20 -d 5000 -i 10000000 -u 5 -f 0

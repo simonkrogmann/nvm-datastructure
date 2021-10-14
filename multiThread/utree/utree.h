@@ -80,6 +80,10 @@ void *alloc(size_t size) {
   return pmemobj_direct(p.oid);
 #else
   void *ret = curr_addr;
+  if (reinterpret_cast<size_t>(curr_addr) % 4 != 0)
+  {
+      std::cerr << "Unaligned allocation at " << reinterpret_cast<size_t>(curr_addr) << " with size " << size << std::endl;
+  }
   memset(ret, 0, sizeof(list_node_t<T>));
   curr_addr += size;
   if (curr_addr >= start_addr + SPACE_PER_THREAD) {
@@ -997,8 +1001,7 @@ void openPmemobjPool() {
   if (file_exists(pathname) != 0) {
     printf("create new one.\n");
     if ((pop = pmemobj_create(pathname, POBJ_LAYOUT_NAME(btree),
-                              (uint64_t)400 * 1024 * 1024 * 1024, 0666)) ==
-        NULL) {
+                              (uint64_t)400ULL * 1024ULL * 1024ULL * 1024ULL, 0666)) == NULL) {
       perror("failed to create pool.\n");
       return;
     }
