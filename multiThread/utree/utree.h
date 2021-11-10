@@ -24,7 +24,8 @@
 #define CACHE_LINE_SIZE 64 
 #define IS_FORWARD(c) (c % 2 == 0)
 
-using entry_key_t = int64_t;
+constexpr size_t key_size = 8;
+using entry_key_t = std::array<uint64_t, key_size>;
 
 
 pthread_mutex_t print_mtx;
@@ -173,12 +174,12 @@ class header{
 template <typename T>
 class entry{ 
   private:
-    entry_key_t key; // 8 bytes
+    entry_key_t key;
     char* ptr; // 8 bytes
 
   public :
     entry(){
-      key = LONG_MAX;
+      key = {ULONG_MAX};
       ptr = NULL;
     }
 

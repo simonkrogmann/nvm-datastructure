@@ -213,7 +213,7 @@ void *test(void *data)
                     clock_gettime(CLOCK_MONOTONIC, &T1);
                 }
 #endif
-                d->set->insert(val, val);
+                d->set->insert({val}, val);
                 
 #ifdef DETECT_LATENCY
                 if (d->id == 1){
@@ -257,7 +257,7 @@ void *test(void *data)
                     clock_gettime(CLOCK_MONOTONIC, &T1);
                 }
 #endif
-            if (d->set->search(val) != NULL) d->nb_found++;
+            if (d->set->search({val}) != NULL) d->nb_found++;
 
 #ifdef DETECT_LATENCY
                 if (d->id == 1){
@@ -330,7 +330,7 @@ int main(int argc, char **argv)
     };
 
 
-    int               i, c;
+    int               c;
     unsigned long     size;
     setkey_t          last = 0;
     setkey_t          val = 0;
@@ -385,6 +385,7 @@ int main(int argc, char **argv)
     memset(record, 0, sizeof(record));
     printf("simplified version:\n");
 
+    int i = 0;
     while(1) {
         i = 0;
         c = getopt_long(argc, argv, "hAf:d:i:t:r:S:u:U:c:", long_options, &i);
@@ -520,16 +521,14 @@ int main(int argc, char **argv)
 
     // Populate set
     printf("Adding %d entries to set\n", initial);
-    i = 0;
 
     struct timeval start_time, end_time;
     uint64_t       time_interval;
     gettimeofday(&start_time, NULL);
 
-    while (i < initial) {
-        bt->insert(i, i);
+    for (uint64_t i; i < initial; ++i) {
+        bt->insert({i}, i);
         last = val;
-        i++;
     }
 
     gettimeofday(&end_time, NULL);
@@ -543,7 +542,7 @@ int main(int argc, char **argv)
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     int nodeID;
-    for (i = 0; i < nb_threads; i++) {
+    for (int i = 0; i < nb_threads; i++) {
       nodeID = i & 0x1;
       printf("Creating thread %d\n", i);
       data[i].id = i + 1;
@@ -648,7 +647,7 @@ int main(int argc, char **argv)
     updates =                     0;
     effupds =                     0;
     max_retries =                 0;
-    for (i = 0; i < nb_threads; i++) {
+    for (int i = 0; i < nb_threads; i++) {
         //printf("i=%lu %lu\n", i, data[i].nb_add + data[i].nb_remove);
         aborts +=                       data[i].nb_aborts;
         aborts_locked_read +=           data[i].nb_aborts_locked_read;
