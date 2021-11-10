@@ -503,8 +503,7 @@ int main(int argc, char **argv)
 
     /* create the skip list set and do inits */
     global_id = nb_threads * update / 100;
-    btree<int64_t> *bt;
-    bt = new btree<int64_t>();
+    auto bt = new btree<int64_t>();
     
     stop = 0;
 

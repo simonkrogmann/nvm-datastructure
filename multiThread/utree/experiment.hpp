@@ -2,6 +2,8 @@
 
 #include <random>
 #include <array>
+#include <unordered_set>
+#include <typeinfo>
 
 #include "utree.h"
 
@@ -23,26 +25,58 @@ void experiment()
     btree<Data> primary;
     btree<Data*> secondary;
 
+    std::vector<std::pair<Data, Data *>> data;
+    std::unordered_set<int64_t> inserted_keys;
     std::vector<int64_t> primary_keys;
     std::vector<int64_t> secondary_keys;
-
-
-    for (int i = 0; i < 2'000'000; ++i)
+    while (data.size() < 2'000'000)
     {
         Data d {.primary = data_dist(rng), .secondary = data_dist(rng)};
         for (auto & el : d.padding)
         {
             el = data_dist(rng);
         }
-        auto found = primary.search(d.primary);
-        if (found == nullptr)
+        if (inserted_keys.find(d.primary) == inserted_keys.end())
         {
-            auto inserted = primary.insert(d.primary, d);
-            secondary.insert(inserted->secondary, inserted);
-            primary_keys.push_back(inserted->primary);
-            secondary_keys.push_back(inserted->secondary);
+            inserted_keys.insert(d.primary);
+            data.push_back({d, nullptr});
+            primary_keys.push_back(d.primary);
+            secondary_keys.push_back(d.secondary);
         }
     }
+
+
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (auto & [el, loc] : data)
+    {
+        auto inserted = primary.insert(el.primary, el);
+        loc = inserted;
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    int64_t elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+    std::cout << "Primary inserts" << std::endl
+        << "  Total time = " << elapsed << " ns" << std::endl
+        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
+
+    sleep(5);
+
+    start = std::chrono::high_resolution_clock::now();
+    for (const auto & [el, loc] : data)
+    {
+        secondary.insert(el.secondary, loc);
+    }
+
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+    std::cout << "Secondary inserts" << std::endl
+        << "  Total time = " << elapsed << " ns" << std::endl
+        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
+
     std::shuffle(primary_keys.begin(), primary_keys.end(), rng);
     std::shuffle(secondary_keys.begin(), secondary_keys.end(), rng);
 
@@ -52,6 +86,8 @@ void experiment()
     int counter = 0;
     int counter2 = 0;
     int repeats = 1'000'000;
+
+    start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < repeats; ++i)
     {
         auto ptr = primary.search(primary_keys[i]);
@@ -61,7 +97,16 @@ void experiment()
             ++counter;
         }
     }
-    std::cout << "Counters: " << counter << ", " << counter2 << std::endl;
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+    std::cout << "Primary search hit" << std::endl
+        << "  Total time = " << elapsed << " ns" << std::endl
+        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
+
+    sleep(5);
+
+    start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < repeats; ++i)
     {
         auto ptr = secondary.search(secondary_keys[i]);
@@ -71,7 +116,16 @@ void experiment()
             ++counter2;
         }
     }
-    std::cout << "Counters: " << counter << ", " << counter2 << std::endl;
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+    std::cout << "Secondary search hit" << std::endl
+        << "  Total time = " << elapsed << " ns" << std::endl
+        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
+
+    sleep(5);
+
+    start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < repeats; ++i)
     {
         auto ptr = primary.search(primary_keys[i] + 1);
@@ -80,7 +134,16 @@ void experiment()
             ++counter;
         }
     }
-    std::cout << "Counters: " << counter << ", " << counter2 << std::endl;
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+    std::cout << "Primary search miss" << std::endl
+        << "  Total time = " << elapsed << " ns" << std::endl
+        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
+
+    sleep(5);
+
+    start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < repeats; ++i)
     {
         auto ptr = secondary.search(secondary_keys[i] + 1);
@@ -89,5 +152,12 @@ void experiment()
             ++counter2;
         }
     }
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+    std::cout << "Secondary search miss" << std::endl
+        << "  Total time = " << elapsed << " ns" << std::endl
+        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
+
     std::cout << "Counters: " << counter << ", " << counter2 << std::endl;
 }
