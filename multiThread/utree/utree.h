@@ -18,6 +18,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <vector>
+#include <queue>
 // #include <gperftools/profiler.h>
 
 #define PAGESIZE 512
@@ -110,6 +111,8 @@ class btree{
     list_node_t<T> *list_head = NULL;
     btree();
     ~btree();
+    size_t getMemoryUsed();
+    size_t getPersistentMemoryUsed();
     void setNewRoot(char *);
     void getNumberOfNodes();
     void btree_insert_pred(entry_key_t, char*, char **pred, bool*);
@@ -1037,6 +1040,36 @@ btree<T>::~btree() {
 #ifdef USE_PMDK
   pmemobj_close(pop); 
 #endif
+}
+
+template<typename T>
+size_t btree<T>::getMemoryUsed()
+{
+    auto num_nodes = 1;
+    auto leftmost = list_head;
+    do {
+        page<T> *sibling = leftmost;
+        while(sibling) {
+            sibling->print();
+            num_nodes += 1;
+            sibling = sibling->hdr.sibling_ptr;
+        }
+        leftmost = leftmost->hdr.leftmost_ptr;
+    } while(leftmost);
+    return num_nodes * sizeof(page<T>);
+}
+
+template<typename T>
+size_t btree<T>::getPersistentMemoryUsed()
+{
+    auto num_nodes = 0;
+    auto current = list_head;
+    while (current != nullptr)
+    {
+        num_nodes += 1;
+        current = current->next;
+    }
+    return num_nodes * sizeof(list_node_t<T>);
 }
 
 template<typename T>

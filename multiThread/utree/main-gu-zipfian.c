@@ -385,6 +385,10 @@ int main(int argc, char **argv)
     memset(record, 0, sizeof(record));
     printf("simplified version:\n");
 
+    experiment();
+
+    exit(0);
+
     int i = 0;
     while(1) {
         i = 0;
@@ -499,8 +503,6 @@ int main(int argc, char **argv)
     else srand(seed);
 
     levelmax = floor_log_2((unsigned int) initial);
-
-    experiment();
 
     /* create the skip list set and do inits */
     global_id = nb_threads * update / 100;

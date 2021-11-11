@@ -76,7 +76,7 @@ void experiment()
         }
     }
     std::vector<entry_key_t> not_present_primary;
-    while (not_present_primary.size() < 2'000'000)
+    while (not_present_primary.size() < 1'000'000)
     {
         entry_key_t key;
         randomize(key);
@@ -86,7 +86,7 @@ void experiment()
         }
     }
     std::vector<entry_key_t> not_present_secondary;
-    while (not_present_secondary.size() < 2'000'000)
+    while (not_present_secondary.size() < 1'000'000)
     {
         entry_key_t key;
         randomize(key);
