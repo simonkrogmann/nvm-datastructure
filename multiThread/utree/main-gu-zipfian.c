@@ -330,34 +330,9 @@ int main(int argc, char **argv)
     };
 
 
-    int               c;
-    unsigned long     size;
-    setkey_t          last = 0;
-    setkey_t          val = 0;
-    unsigned long     reads, effreads, updates, effupds, aborts, aborts_locked_read, aborts_locked_write,
-                      aborts_validate_read, aborts_validate_write, aborts_validate_commit,
-                      aborts_invalid_memory, aborts_double_write, max_retries, failures_because_contention;
-    thread_data_t     *data;
-    pthread_t         *threads;
-    pthread_attr_t    attr;
-    barrier_t         barrier;
-    struct timeval    start, end;
-    struct timespec   timeout;
-    int duration =    DEFAULT_DURATION;   
-    int initial =     DEFAULT_INITIAL;    
-    int nb_threads =  DEFAULT_NB_THREADS; 
-    long range =      DEFAULT_RANGE;
-    int seed =        DEFAULT_SEED;
-    int update =      DEFAULT_UPDATE;    
-    int alternate =   DEFAULT_ALTERNATE;
-    int effective =   DEFAULT_EFFECTIVE; 
-    int unbalanced =  DEFAULT_UNBALANCED;
-    sigset_t          block_set;
-    int fd[2];
-    void *pmem[2];
-    uint64_t allocate_size = 700ULL * 1024ULL * 1024ULL * 1024ULL;
 
     bindCPU();
+    int fd[2];
     fd[0] = open("/dev/dax0.0", O_RDWR);
     fd[1] = open("/dev/dax1.0", O_RDWR);
     if (fd[0] == -1)
@@ -370,6 +345,8 @@ int main(int argc, char **argv)
         perror("open1");
         exit(1);
     }
+    void *pmem[2];
+    const uint64_t allocate_size = 700ULL * 1024ULL * 1024ULL * 1024ULL;
     for (int i=0; i<2; i++){
       pmem[i] = mmap(NULL, allocate_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd[i], 0);
       if (pmem[i] == (void*) -1)
@@ -390,9 +367,18 @@ int main(int argc, char **argv)
 
     printf("simplified version:\n");
     int i = 0;
+    int duration =    DEFAULT_DURATION;
+    int initial =     DEFAULT_INITIAL;
+    int nb_threads =  DEFAULT_NB_THREADS;
+    long range =      DEFAULT_RANGE;
+    int seed =        DEFAULT_SEED;
+    int update =      DEFAULT_UPDATE;
+    int alternate =   DEFAULT_ALTERNATE;
+    int effective =   DEFAULT_EFFECTIVE;
+    int unbalanced =  DEFAULT_UNBALANCED;
     while(1) {
         i = 0;
-        c = getopt_long(argc, argv, "hAf:d:i:t:r:S:u:U:c:", long_options, &i);
+        int c = getopt_long(argc, argv, "hAf:d:i:t:r:S:u:U:c:", long_options, &i);
         if(c == -1) break;
         if(c == 0 && long_options[i].flag == 0) c = long_options[i].val;
 
@@ -487,14 +473,17 @@ int main(int argc, char **argv)
     printf("Efffective   : %d\n",  effective);
     printf("Type sizes   : int=%d/long=%d/ptr=%d/word=%d\n",
                                    (int)sizeof(int), (int)sizeof(long), (int)sizeof(void *), (int)sizeof(uintptr_t));
+    struct timespec timeout;
     timeout.tv_sec =               duration / 1000;
     timeout.tv_nsec =              (duration % 1000) * 1000000;
 
-    if ((data = (thread_data_t *)malloc(nb_threads * sizeof(thread_data_t))) == NULL) {
+    thread_data_t * data = (thread_data_t *)malloc(nb_threads * sizeof(thread_data_t));
+    if (data == nullptr) {
         perror("malloc");
         exit(1);
     }
-    if ((threads = (pthread_t *)malloc(nb_threads * sizeof(pthread_t))) == NULL) {
+    pthread_t * threads = (pthread_t *)malloc(nb_threads * sizeof(pthread_t));
+    if (threads == nullptr) {
         perror("malloc");
         exit(1);
     }
@@ -528,6 +517,8 @@ int main(int argc, char **argv)
     uint64_t       time_interval;
     gettimeofday(&start_time, NULL);
 
+    setkey_t last = 0;
+    setkey_t val = 0;
     for (uint64_t i; i < initial; ++i) {
         bt->insert({i}, i);
         last = val;
@@ -540,12 +531,13 @@ int main(int argc, char **argv)
     printf("Level max    : %d\n",             levelmax);
 
     // Access set from all threads
+    barrier_t         barrier;
     barrier_init(&barrier, nb_threads + 1);
+    pthread_attr_t    attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-    int nodeID;
     for (int i = 0; i < nb_threads; i++) {
-      nodeID = i & 0x1;
+      int nodeID = i & 0x1;
       printf("Creating thread %d\n", i);
       data[i].id = i + 1;
       data[i].first = last;
@@ -605,10 +597,12 @@ int main(int argc, char **argv)
     barrier_cross(&barrier);                                           
 
     printf("STARTING...\n");
+    struct timeval    start, end;
     gettimeofday(&start, NULL);
     if (duration > 0) {
         nanosleep(&timeout, NULL);
     } else {
+        sigset_t block_set;
         sigemptyset(&block_set);
         sigsuspend(&block_set);
     }
@@ -632,23 +626,22 @@ int main(int argc, char **argv)
         }
         //printf("thread %d end!\n", data[i].id);
     }
-    
 
     duration =                    (end.tv_sec * 1000 + end.tv_usec / 1000) - (start.tv_sec * 1000 + start.tv_usec / 1000);
-    aborts =                      0;
-    aborts_locked_read =          0;
-    aborts_locked_write =         0;
-    aborts_validate_read =        0;
-    aborts_validate_write =       0;
-    aborts_validate_commit =      0;
-    aborts_invalid_memory =       0;
-    aborts_double_write =         0;
-    failures_because_contention = 0;
-    reads =                       0;
-    effreads =                    0;
-    updates =                     0;
-    effupds =                     0;
-    max_retries =                 0;
+    unsigned long aborts =                      0;
+    unsigned long aborts_locked_read =          0;
+    unsigned long aborts_locked_write =         0;
+    unsigned long aborts_validate_read =        0;
+    unsigned long aborts_validate_write =       0;
+    unsigned long aborts_validate_commit =      0;
+    unsigned long aborts_invalid_memory =       0;
+    unsigned long aborts_double_write =         0;
+    unsigned long failures_because_contention = 0;
+    unsigned long reads =                       0;
+    unsigned long effreads =                    0;
+    unsigned long updates =                     0;
+    unsigned long effupds =                     0;
+    unsigned long max_retries =                 0;
     for (int i = 0; i < nb_threads; i++) {
         //printf("i=%lu %lu\n", i, data[i].nb_add + data[i].nb_remove);
         aborts +=                       data[i].nb_aborts;
