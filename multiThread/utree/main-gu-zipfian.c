@@ -383,12 +383,12 @@ int main(int argc, char **argv)
     curr_addr = start_addr;
     
     memset(record, 0, sizeof(record));
-    printf("simplified version:\n");
 
     experiment();
 
     exit(0);
 
+    printf("simplified version:\n");
     int i = 0;
     while(1) {
         i = 0;

@@ -108,12 +108,10 @@ void experiment()
 
     auto end = std::chrono::high_resolution_clock::now();
     int64_t elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    const auto primary_insert_time = elapsed / static_cast<float>(data.size());
 
-    std::cout << "Primary inserts" << std::endl
-        << "  Total time = " << elapsed << " ns" << std::endl
-        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
 
-    sleep(5);
+    sleep(1);
 
     start = std::chrono::high_resolution_clock::now();
     for (const auto & [el, loc] : data)
@@ -123,16 +121,17 @@ void experiment()
 
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    const auto secondary_insert_time = elapsed / static_cast<float>(data.size());
 
-    std::cout << "Secondary inserts" << std::endl
-        << "  Total time = " << elapsed << " ns" << std::endl
-        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
 
     std::shuffle(primary_keys.begin(), primary_keys.end(), rng);
     std::shuffle(secondary_keys.begin(), secondary_keys.end(), rng);
 
-    std::cout << "Created primary and secondary index" << std::endl;
-    std::cout << "Now starting experiments..." << std::endl;
+    const auto primary_dram = primary.getMemoryUsed();
+    const auto secondary_dram = secondary.getMemoryUsed();
+    const auto primary_nvram = primary.getPersistentMemoryUsed();
+    const auto secondary_nvram = secondary.getPersistentMemoryUsed();
+
 
     int counter = 0;
     int counter2 = 0;
@@ -150,12 +149,9 @@ void experiment()
     }
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    const auto primary_hit = elapsed / static_cast<float>(repeats);
 
-    std::cout << "Primary search hit" << std::endl
-        << "  Total time = " << elapsed << " ns" << std::endl
-        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
-
-    sleep(5);
+    sleep(1);
 
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < repeats; ++i)
@@ -169,12 +165,10 @@ void experiment()
     }
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    const auto secondary_hit = elapsed / static_cast<float>(repeats);
 
-    std::cout << "Secondary search hit" << std::endl
-        << "  Total time = " << elapsed << " ns" << std::endl
-        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
 
-    sleep(5);
+    sleep(1);
 
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < repeats; ++i)
@@ -187,12 +181,10 @@ void experiment()
     }
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    const auto primary_miss = elapsed / static_cast<float>(repeats);
 
-    std::cout << "Primary search miss" << std::endl
-        << "  Total time = " << elapsed << " ns" << std::endl
-        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
 
-    sleep(5);
+    sleep(1);
 
     start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < repeats; ++i)
@@ -205,10 +197,20 @@ void experiment()
     }
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    const auto secondary_miss = elapsed / static_cast<float>(repeats);
 
-    std::cout << "Secondary search miss" << std::endl
-        << "  Total time = " << elapsed << " ns" << std::endl
-        << "  Average time = " << (elapsed / static_cast<float>(data.size())) << " ns" << std::endl;
+    std::cout << "Times in ns, storage in bytes" << std::endl;
+    std::cout
+        << "Key Size, Row Size, "
+        << "Primary insert, Secondary insert, "
+        << "Primary search hit, Secondary search hit, Primary search miss, Secondary search miss, "
+        << "Primary (DRAM), Secondary (DRAM), Primary (NVRAM), Secondary (NVRAM),"
+        << std::endl;
 
-    std::cout << "Counters: " << counter << ", " << counter2 << std::endl;
+    std::cout
+        << sizeof(entry_key_t) << "," << sizeof(Data) << ","
+        << primary_insert_time << "," << secondary_insert_time << ","
+        << primary_hit << "," << secondary_hit << "," << primary_miss << "," << secondary_miss << ","
+        << primary_dram << "," << secondary_dram << "," << primary_nvram << "," << secondary_nvram << ","
+        << std::endl;
 }

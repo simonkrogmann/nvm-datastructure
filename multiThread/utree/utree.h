@@ -21,11 +21,13 @@
 #include <queue>
 // #include <gperftools/profiler.h>
 
-#define PAGESIZE 512
 #define CACHE_LINE_SIZE 64 
 #define IS_FORWARD(c) (c % 2 == 0)
 
-constexpr size_t key_size = 8;
+#ifndef KEYSIZE
+#define KEYSIZE 1
+#endif
+constexpr size_t key_size = KEYSIZE;
 using entry_key_t = std::array<uint64_t, key_size>;
 
 
@@ -75,18 +77,19 @@ POBJ_LAYOUT_END(btree);
 PMEMobjpool *pop;
 #endif
 template <typename T>
-void *alloc(size_t size) {
+T *alloc() {
+    auto size = sizeof(T);
 #ifdef USE_PMDK
   TOID(list_node_t) p;
   POBJ_ZALLOC(pop, &p, list_node_t, size);
   return pmemobj_direct(p.oid);
 #else
-  void *ret = curr_addr;
+  auto ret = reinterpret_cast<T*>(curr_addr);
   if (reinterpret_cast<size_t>(curr_addr) % 4 != 0)
   {
       std::cerr << "Unaligned allocation at " << reinterpret_cast<size_t>(curr_addr) << " with size " << size << std::endl;
   }
-  memset(ret, 0, sizeof(list_node_t<T>));
+  memset(ret, 0, size);
   curr_addr += size;
   if (curr_addr >= start_addr + SPACE_PER_THREAD) {
     printf("start_addr is %p, curr_addr is %p, SPACE_PER_THREAD is %lu, no "
@@ -176,14 +179,14 @@ class header{
 
 template <typename T>
 class entry{ 
-  private:
+private:
     entry_key_t key;
     char* ptr; // 8 bytes
 
-  public :
+public :
     entry(){
-      key = {ULONG_MAX};
-      ptr = NULL;
+        key = {ULONG_MAX};
+        ptr = NULL;
     }
 
     friend class page<T>;
@@ -191,19 +194,31 @@ class entry{
 };
 
 
+constexpr size_t nextPowerOf2(size_t n)
+{
+    size_t ret = 1;
+    while( n > ret) {
+        ret <<= 1;
+    }
+    return ret;
+}
+
 template <typename T>
 class page{
 
-  const static int cardinality = (PAGESIZE-sizeof(header<T>))/sizeof(entry<T>);
-  const static int count_in_line = CACHE_LINE_SIZE / sizeof(entry<T>);
-  private:
+    constexpr static size_t PAGESIZE = nextPowerOf2(sizeof(header<T>) + 20 * sizeof(entry<T>));
+    constexpr static size_t cardinality = (PAGESIZE-sizeof(header<T>))/sizeof(entry<T>);
+    constexpr static size_t count_in_line = CACHE_LINE_SIZE / sizeof(entry<T>);
+private:
     header<T> hdr;  // header in persistent memory, 16 bytes
-    entry<T> records[cardinality]; // slots in persistent memory, 16 bytes * n
+    std::array<entry<T>, cardinality> records; // slots in persistent memory, 16 bytes * n
 
-  public:
+public:
     friend class btree<T>;
 
     page(uint32_t level = 0) {
+        // std::cout << "Header size: " << sizeof(header<T>) << ", entrysize: " << sizeof(entry<T>)
+        //  << ", entries: " << cardinality << std::endl;
       hdr.level = level;
       records[0].ptr = NULL;
     }
@@ -350,7 +365,7 @@ class page{
           return NULL;
         }
 
-        register int num_entries = count();
+        int num_entries = count();
 
         for (int i = 0; i < num_entries; i++)
           if (key == records[i].key) {
@@ -387,7 +402,7 @@ class page{
           // overflow
           // create a new node
           page* sibling = new page(hdr.level); 
-          register int m = (int) ceil(num_entries/2);
+          int m = (int) ceil(num_entries/2);
           entry_key_t split_key = records[m].key;
 
           // migrate half of keys into the sibling
@@ -474,7 +489,7 @@ class page{
         }
         else {
           int i = *num_entries - 1, inserted = 0;
-          records[*num_entries+1].ptr = records[*num_entries].ptr; 
+          records.at(*num_entries+1).ptr = records.at(*num_entries).ptr;
           
           // FAST
           for(i = *num_entries - 1; i >= 0; i--) {
@@ -523,7 +538,7 @@ class page{
           return NULL;
         }
 
-        register int num_entries = count();
+        int num_entries = count();
 
         for (int i = 0; i < num_entries; i++)
           if (key == records[i].key) {
@@ -560,7 +575,7 @@ class page{
           // overflow
           // create a new node
           page* sibling = new page(hdr.level); 
-          register int m = (int) ceil(num_entries/2);
+          int m = (int) ceil(num_entries/2);
           entry_key_t split_key = records[m].key;
 
           // migrate half of keys into the sibling
@@ -1029,7 +1044,7 @@ btree<T>::btree(){
   printf("without pmdk!\n");
 #endif
   root = (char*)new page<T>();
-  list_head = (list_node_t<T> *)alloc<T>(sizeof(list_node_t<T>));
+  list_head = alloc<list_node_t<T>>();
   printf("list_head=%p\n", list_head);
   list_head->next = NULL;
   height = 1;
@@ -1045,12 +1060,12 @@ btree<T>::~btree() {
 template<typename T>
 size_t btree<T>::getMemoryUsed()
 {
-    auto num_nodes = 1;
-    auto leftmost = list_head;
+    auto num_nodes = 0;
+    auto leftmost = reinterpret_cast<page<T>*>(root);
     do {
         page<T> *sibling = leftmost;
+        num_nodes += 1;
         while(sibling) {
-            sibling->print();
             num_nodes += 1;
             sibling = sibling->hdr.sibling_ptr;
         }
@@ -1141,7 +1156,7 @@ void btree<T>::btree_insert_pred(entry_key_t key, char* right, char **pred, bool
 
 template<typename T>
 T* btree<T>::insert(entry_key_t key, T value) {
-  list_node_t<T> *n = (list_node_t<T> *)alloc<T>(sizeof(list_node_t<T>));
+  auto n = alloc<list_node_t<T>>();
   //printf("n=%p\n", n);
   n->next = NULL;
   n->key = key;
