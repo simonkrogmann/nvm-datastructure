@@ -52,6 +52,7 @@ struct Data {
 
 int64_t time(std::function<void()> f)
 {
+    sleep(1);
     auto start = std::chrono::high_resolution_clock::now();
     f();
     auto end = std::chrono::high_resolution_clock::now();
@@ -113,8 +114,6 @@ void experiment()
         }
     }) / static_cast<float>(data.size());
 
-    sleep(1);
-
     const auto secondary_insert_time = time([&](){
         for (const auto & [el, loc] : data)
         {
@@ -144,8 +143,6 @@ void experiment()
         }
     }) / static_cast<float>(repeats);
 
-    sleep(1);
-
     const auto secondary_hit = time([&](){
         for (int i = 0; i < repeats; ++i)
         {
@@ -154,16 +151,12 @@ void experiment()
         }
     }) / static_cast<float>(repeats);
 
-    sleep(1);
-
     const auto primary_miss = time([&](){
         for (int i = 0; i < repeats; ++i)
         {
             auto ptr = primary.search(not_present_primary[i]);
         }
     }) / static_cast<float>(repeats);
-
-    sleep(1);
 
     const auto secondary_miss = time([&](){
         for (int i = 0; i < repeats; ++i)
@@ -172,9 +165,8 @@ void experiment()
         }
     }) / static_cast<float>(repeats);
 
-    sleep(1);
-
     std::map<size_t, float> primary_scan;
+    std::map<size_t, float> secondary_scan;
     for (auto width : {10, 100, 1000})
     {
         primary_scan[width] = time([&](){
@@ -183,19 +175,13 @@ void experiment()
                 auto res = primary.scan(primary_keys[i], width);
             }
         }) / static_cast<float>(repeats);
-        sleep(1);
-    }
 
-    std::map<size_t, float> secondary_scan;
-    for (auto width : {10, 100, 1000})
-    {
         secondary_scan[width] = time([&](){
             for (int i = 0; i < repeats; ++i)
             {
                 auto res = secondary.scan(secondary_keys[i], width);
             }
         }) / static_cast<float>(repeats);
-        sleep(1);
     }
 
     std::cout << "Times in ns, storage in bytes" << std::endl;
