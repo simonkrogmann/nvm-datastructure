@@ -8,12 +8,12 @@
 #ifdef USE_PMDK
 #include <libpmemobj.h>
 #endif
-#include <math.h>
+#include <cmath>
 #include <mutex>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -115,6 +115,7 @@ public:
     ~btree();
     size_t getMemoryUsed();
     size_t getPersistentMemoryUsed();
+    std::vector<T> scan(entry_key_t, size_t);
     void setNewRoot(page<T> *);
     void getNumberOfNodes();
     void btree_insert_pred(entry_key_t, char*, char **pred, bool*);
@@ -196,7 +197,7 @@ public :
 constexpr size_t nextPowerOf2(size_t n)
 {
     size_t ret = 1;
-    while( n > ret) {
+    while(n > ret) {
         ret <<= 1;
     }
     return ret;
@@ -820,7 +821,6 @@ public:
 
                     for(int i=1; records[i].ptr != nullptr; ++i) {
                         entry_key_t k = records[i].key;
-                        entry_key_t k1 = records[i - 1].key;
                         if (k < key){
                             *pred = records[i].ptr;
                             if (debug)
@@ -1143,13 +1143,7 @@ void btree<T>::btree_insert_pred(entry_key_t key, char* right, char **pred, bool
         p = (page<T>*)p->linear_search(key);
     }
     *pred = nullptr;
-    if(!p->store(this, nullptr, key, right, true, true, pred)) { // store
-        // The key already exist.
-        *update = true;
-    } else {
-        // Insert a new key.
-        *update = false;
-    }
+    *update = !p->store(this, nullptr, key, right, true, true, pred);
 }
 
 template<typename T>
@@ -1321,4 +1315,22 @@ void btree<T>::printAll(){
 
     printf("total number of keys: %d\n", total_keys);
     pthread_mutex_unlock(&print_mtx);
+}
+
+template <typename T>
+std::vector<T> btree<T>::scan(entry_key_t key, size_t size)
+{
+    std::vector<T> result;
+    bool f = false;
+    char *prev;
+    auto ptr = (list_node_t<T> *) btree_search_pred(key, &f, &prev);
+    if (!f) {
+        return {};
+    }
+    while (ptr != nullptr && result.size() < size)
+    {
+        result.push_back(ptr->value);
+        ptr = ptr->next;
+    }
+    return result;
 }

@@ -4,6 +4,7 @@
 #include <array>
 #include <unordered_set>
 #include <typeinfo>
+#include <map>
 
 #include "utree.h"
 
@@ -48,6 +49,14 @@ struct Data {
     // just to increase size
     std::array<uint64_t, padding_size> padding;
 };
+
+int64_t time(std::function<void()> f)
+{
+    auto start = std::chrono::high_resolution_clock::now();
+    f();
+    auto end = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+}
 
 
 void experiment()
@@ -96,32 +105,22 @@ void experiment()
         }
     }
 
-
-
-    auto start = std::chrono::high_resolution_clock::now();
-
-    for (auto & [el, loc] : data)
-    {
-        auto inserted = primary.insert(el.primary, el);
-        loc = inserted;
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    int64_t elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    const auto primary_insert_time = elapsed / static_cast<float>(data.size());
-
+    const auto primary_insert_time = time([&](){
+        for (auto & [el, loc] : data)
+        {
+            auto inserted = primary.insert(el.primary, el);
+            loc = inserted;
+        }
+    }) / static_cast<float>(data.size());
 
     sleep(1);
 
-    start = std::chrono::high_resolution_clock::now();
-    for (const auto & [el, loc] : data)
-    {
-        secondary.insert(el.secondary, loc);
-    }
-
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    const auto secondary_insert_time = elapsed / static_cast<float>(data.size());
+    const auto secondary_insert_time = time([&](){
+        for (const auto & [el, loc] : data)
+        {
+            secondary.insert(el.secondary, loc);
+        }
+    }) / static_cast<float>(data.size());
 
 
     std::shuffle(primary_keys.begin(), primary_keys.end(), rng);
@@ -137,67 +136,67 @@ void experiment()
     int counter2 = 0;
     int repeats = 1'000'000;
 
-    start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < repeats; ++i)
-    {
-        auto ptr = primary.search(primary_keys[i]);
-        assert(ptr != nullptr);
-        if (ptr->padding[10] < 1'000)
+    const auto primary_hit = time([&](){
+        for (int i = 0; i < repeats; ++i)
         {
-            ++counter;
+            auto ptr = primary.search(primary_keys[i]);
+            assert(ptr != nullptr);
         }
-    }
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    const auto primary_hit = elapsed / static_cast<float>(repeats);
+    }) / static_cast<float>(repeats);
 
     sleep(1);
 
-    start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < repeats; ++i)
-    {
-        auto ptr = secondary.search(secondary_keys[i]);
-        assert(ptr != nullptr);
-        if ((*ptr)->padding[10] < 1'000)
+    const auto secondary_hit = time([&](){
+        for (int i = 0; i < repeats; ++i)
         {
-            ++counter2;
+            auto ptr = secondary.search(secondary_keys[i]);
+            assert(ptr != nullptr);
         }
-    }
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    const auto secondary_hit = elapsed / static_cast<float>(repeats);
-
+    }) / static_cast<float>(repeats);
 
     sleep(1);
 
-    start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < repeats; ++i)
-    {
-        auto ptr = primary.search(not_present_primary[i]);
-        if (ptr && ptr->padding[10] < 1'000)
+    const auto primary_miss = time([&](){
+        for (int i = 0; i < repeats; ++i)
         {
-            ++counter;
+            auto ptr = primary.search(not_present_primary[i]);
         }
-    }
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    const auto primary_miss = elapsed / static_cast<float>(repeats);
-
+    }) / static_cast<float>(repeats);
 
     sleep(1);
 
-    start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < repeats; ++i)
-    {
-        auto ptr = secondary.search(not_present_secondary[i]);
-        if (ptr && (*ptr)->padding[10] < 1'000)
+    const auto secondary_miss = time([&](){
+        for (int i = 0; i < repeats; ++i)
         {
-            ++counter2;
+            auto ptr = secondary.search(not_present_secondary[i]);
         }
+    }) / static_cast<float>(repeats);
+
+    sleep(1);
+
+    std::map<size_t, float> primary_scan;
+    for (auto width : {10, 100, 1000})
+    {
+        primary_scan[width] = time([&](){
+            for (int i = 0; i < repeats; ++i)
+            {
+                auto res = primary.scan(primary_keys[i], width);
+            }
+        }) / static_cast<float>(repeats);
+        sleep(1);
     }
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-    const auto secondary_miss = elapsed / static_cast<float>(repeats);
+
+    std::map<size_t, float> secondary_scan;
+    for (auto width : {10, 100, 1000})
+    {
+        secondary_scan[width] = time([&](){
+            for (int i = 0; i < repeats; ++i)
+            {
+                auto res = secondary.scan(secondary_keys[i], width);
+            }
+        }) / static_cast<float>(repeats);
+        sleep(1);
+    }
 
     std::cout << "Times in ns, storage in bytes" << std::endl;
     std::cout
@@ -205,6 +204,8 @@ void experiment()
         << "Primary insert, Secondary insert, "
         << "Primary search hit, Secondary search hit, Primary search miss, Secondary search miss, "
         << "Primary (DRAM), Secondary (DRAM), Primary (NVRAM), Secondary (NVRAM),"
+        << "PrimaryScan10, PrimaryScan100, PrimaryScan1000,"
+        << "SecondaryScan10, SecondaryScan100, SecondaryScan1000,"
         << std::endl;
 
     std::cout
@@ -212,5 +213,7 @@ void experiment()
         << primary_insert_time << "," << secondary_insert_time << ","
         << primary_hit << "," << secondary_hit << "," << primary_miss << "," << secondary_miss << ","
         << primary_dram << "," << secondary_dram << "," << primary_nvram << "," << secondary_nvram << ","
+        << primary_scan[10] << "," << primary_scan[100] << "," << primary_scan[1000] << ","
+        << secondary_scan[10] << "," << secondary_scan[100] << "," << secondary_scan[1000] << ","
         << std::endl;
 }
