@@ -170,18 +170,18 @@ void experiment()
     for (auto width : {10, 100, 1000})
     {
         primary_scan[width] = time([&](){
-            for (int i = 0; i < repeats; ++i)
+            for (int i = 0; i < repeats / 10; ++i)
             {
                 auto res = primary.scan(primary_keys[i], width);
             }
-        }) / static_cast<float>(repeats);
+        }) / static_cast<float>(repeats / 10);
 
         secondary_scan[width] = time([&](){
-            for (int i = 0; i < repeats; ++i)
+            for (int i = 0; i < repeats / 10; ++i)
             {
-                auto res = secondary.scan(secondary_keys[i], width);
+                auto res = secondary.secondaryScan(secondary_keys[i], width);
             }
-        }) / static_cast<float>(repeats);
+        }) / static_cast<float>(repeats / 10);
     }
 
     std::cout << "Times in ns, storage in bytes" << std::endl;

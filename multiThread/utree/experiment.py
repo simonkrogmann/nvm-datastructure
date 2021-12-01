@@ -29,7 +29,6 @@ def main():
     for keysize in range(1, 100):
         print(f"Running keysize {keysize}")
         compile(keysize)
-        output += f"\nKeysize = {keysize}\n"
         res = run()
         if res == -1:
             output += "    Error!\n"

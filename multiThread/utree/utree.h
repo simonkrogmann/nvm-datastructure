@@ -110,12 +110,14 @@ private:
     page<T>* root;
 
 public:
+    using U = typename std::remove_pointer_t<T>;
     list_node_t<T> *list_head = nullptr;
     btree();
     ~btree();
     size_t getMemoryUsed();
     size_t getPersistentMemoryUsed();
     std::vector<T> scan(entry_key_t, size_t);
+    std::vector<U> secondaryScan(entry_key_t, size_t);
     void setNewRoot(page<T> *);
     void getNumberOfNodes();
     void btree_insert_pred(entry_key_t, char*, char **pred, bool*);
@@ -1330,6 +1332,24 @@ std::vector<T> btree<T>::scan(entry_key_t key, size_t size)
     while (ptr != nullptr && result.size() < size)
     {
         result.push_back(ptr->value);
+        ptr = ptr->next;
+    }
+    return result;
+}
+
+template <typename T>
+std::vector<typename btree<T>::U> btree<T>::secondaryScan(entry_key_t key, size_t size)
+{
+    std::vector<U> result;
+    bool f = false;
+    char *prev;
+    auto ptr = (list_node_t<T> *) btree_search_pred(key, &f, &prev);
+    if (!f) {
+        return {};
+    }
+    while (ptr != nullptr && result.size() < size)
+    {
+        result.push_back(*(ptr->value));
         ptr = ptr->next;
     }
     return result;
